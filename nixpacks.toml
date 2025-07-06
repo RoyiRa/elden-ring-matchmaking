@@ -1,0 +1,8 @@
+[phases.setup]
+cmds = ["cp server-package.json package.json"]
+
+[phases.install]
+cmds = ["npm install"]
+
+[start]
+cmd = "node server.js" 
