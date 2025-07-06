@@ -4,5 +4,11 @@ cmds = ["cp server-package.json package.json"]
 [phases.install]
 cmds = ["npm install"]
 
+[phases.build]
+cmds = ["echo 'No build step needed for server'"]
+
 [start]
-cmd = "node server.js" 
+cmd = "node server.js"
+
+[variables]
+NODE_ENV = "production" 

@@ -1,0 +1,15 @@
+web/
+src/
+EldenRingMatchmaking/
+assets/
+tests/
+test-results/
+*.md
+*.txt
+run-web.sh
+App.tsx
+index.js
+metro.config.js
+babel.config.js
+tsconfig.json
+app.json 
