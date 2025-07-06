@@ -144,7 +144,12 @@ const WaitingScreen = () => {
     }
 
     const serverUrl = process.env.REACT_APP_SERVER_URL || 'http://localhost:4000';
-    const newSocket = io(serverUrl);
+    const newSocket = io(serverUrl, {
+      transports: ['websocket', 'polling'],
+      upgrade: true,
+      timeout: 20000,
+      forceNew: true
+    });
 
     newSocket.on('connect', () => {
       console.log('Connected to server');
@@ -171,7 +176,8 @@ const WaitingScreen = () => {
 
     newSocket.on('connect_error', (error) => {
       console.error('Connection error:', error);
-      setStatus('Connection error. Please try again.');
+      console.error('Server URL:', serverUrl);
+      setStatus(`Connection error: ${error.message || 'Unknown error'}. Please try again.`);
     });
 
     newSocket.on('disconnect', () => {
