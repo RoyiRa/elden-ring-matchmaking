@@ -181,12 +181,23 @@ io.on('connection', (socket) => {
   });
 });
 
+// Test endpoints
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Elden Ring Matchmaking Server',
+    status: 'running',
+    endpoints: ['/health', '/socket.io']
+  });
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     waitingPlayers: matchmaker.waitingPlayers.length,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    port: process.env.PORT,
+    socketPath: '/socket.io'
   });
 });
 
