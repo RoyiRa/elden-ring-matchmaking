@@ -1,0 +1,9 @@
+[build]
+  # Run build inside the "web" folder
+  base = "web"
+  command = "npm run build"
+  publish = "build"
+
+# Optional: set environment variables here or in the Netlify UI
+#[build.environment]
+#  REACT_APP_SERVER_URL = "https://your-backend-url" 
