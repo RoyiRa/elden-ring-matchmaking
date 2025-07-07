@@ -204,4 +204,8 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
-*.swo 
+*.swo
+
+# Allow public folder for web react app
+!web/public/
+!web/public/** 
