@@ -29,9 +29,9 @@ class MatchmakingService {
   }
 
   generatePassword() {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const chars = 'abcdefghijklmnopqrstuvwxyz' //'abcdefghijklmnopqrstuvwxyz0123456789';
     let result = '';
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 6; i++) {
       result += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return result;
@@ -133,12 +133,27 @@ class MatchmakingService {
                 !trio.some(t => t.userId === p.userId)
               );
 
+              // --- Boss intersection logic ---
+              let actualBoss = commonBoss;
+              if (commonBoss === 'ALL_BOSSES' || commonBoss === 'Random') {
+                // If a player's boss list is only ALL_BOSSES, treat as all bosses
+                const allPossibleBosses = ['Tricephalos', 'Gaping Jaw', 'Sentient Pest', 'Augur', 'Equilibrious Beast', 'Darkdrift Knight', 'Fissure in the Fog', 'Night Aspect'];
+                const bossLists = trio.map(p => {
+                  const filtered = p.bosses.filter(b => b !== 'ALL_BOSSES');
+                  return filtered.length > 0 ? filtered : allPossibleBosses;
+                });
+                const intersection = bossLists.reduce((a, b) => a.filter(c => b.includes(c)), bossLists[0]);
+                const bossPool = intersection.length > 0 ? intersection : allPossibleBosses;
+                actualBoss = bossPool[Math.floor(Math.random() * bossPool.length)];
+              }
+
               const matchResult = {
                 success: true,
                 password: this.generatePassword(),
                 sessionId: `session_${Date.now()}`,
                 participants: trio.map(t => t.userId),
-                assignedBoss: commonBoss === 'ALL_BOSSES' ? 'Random' : commonBoss,
+                assignedBoss: actualBoss, // Always send the real boss name
+                actualBoss,
                 assignedCharacters: assigned,
               };
 
@@ -156,15 +171,44 @@ class MatchmakingService {
 
 const matchmaker = new MatchmakingService();
 
+// Simple counters for basic metrics
+let totalVisits = 0;
+let totalQueueStarts = 0;
+let totalMatches = 0;
+const serverStartISO = new Date().toISOString();
+
+// POST /metrics/visit  — increment visit counter (called by frontend once per page load)
+app.post('/metrics/visit', (req, res) => {
+  totalVisits += 1;
+  res.sendStatus(204);
+});
+
+// Protected metrics endpoint
+app.get('/metrics', (req, res) => {
+  const adminKey = req.header('x-admin-key');
+  const secret = process.env.METRICS_SECRET;
+  if (secret && adminKey !== secret) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  res.json({
+    totalVisits,
+    totalQueueStarts,
+    totalMatches,
+    upSince: serverStartISO
+  });
+});
+
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
 
   socket.on('join_queue', (data) => {
+    totalQueueStarts += 1; // metric
     const { userId, platform, bosses, characters } = data;
     
     const result = matchmaker.addPlayer(socket.id, userId, platform, bosses, characters);
     
     if (result) {
+      totalMatches += 1; // metric
       // Notify all matched players
       result.players.forEach(player => {
         io.to(player.socketId).emit('match_found', {
@@ -174,6 +218,21 @@ io.on('connection', (socket) => {
       });
     }
   });
+
+  // --- Chat functionality ---
+  socket.on('join_match_room', ({ password, user }) => {
+    socket.join(password);
+    socket.data.matchUser = user;
+    socket.data.matchRoom = password;
+    console.log(`Socket ${socket.id} joined match room ${password} as ${user}`);
+  });
+
+  socket.on('chat_message', ({ room, user, text }) => {
+    if (room && user && text) {
+      io.to(room).emit('chat_message', { user, text });
+    }
+  });
+  // --- End chat functionality ---
 
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${socket.id}`);
