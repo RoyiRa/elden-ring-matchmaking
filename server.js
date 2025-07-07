@@ -26,14 +26,33 @@ class MatchmakingService {
       new Set(['Revenant', 'Raider', 'Recluse']),
       new Set(['Ironeye', 'Duchess', 'Wylder']),
     ];
+    // Track generated passwords for 1 hour to avoid duplicates
+    // Map<password, timestampMs>
+    this.usedPasswords = new Map();
+  }
+
+  // Remove passwords older than 1 hour
+  cleanOldPasswords() {
+    const cutoff = Date.now() - 60 * 60 * 1000; // 1 hour ago
+    for (const [pw, ts] of this.usedPasswords) {
+      if (ts < cutoff) {
+        this.usedPasswords.delete(pw);
+      }
+    }
   }
 
   generatePassword() {
-    const chars = 'abcdefghijklmnopqrstuvwxyz' //'abcdefghijklmnopqrstuvwxyz0123456789';
+    this.cleanOldPasswords();
+    const chars = 'abcdefghijklmnopqrstuvwxyz'; //'abcdefghijklmnopqrstuvwxyz0123456789';
     let result = '';
-    for (let i = 0; i < 6; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
+    do {
+      result = '';
+      for (let i = 0; i < 6; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+    } while (this.usedPasswords.has(result));
+
+    this.usedPasswords.set(result, Date.now());
     return result;
   }
 
