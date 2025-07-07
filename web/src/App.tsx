@@ -29,19 +29,27 @@ const ExpeditionsScreen = () => {
   const [platform, setPlatform] = React.useState('');
   const [allBosses, setAllBosses] = React.useState(false);
   const [bosses, setBosses] = React.useState<string[]>([]);
-  const [characters, setCharacters] = React.useState<string[]>([]);
+  const [characters, setCharacters] = React.useState<string[]>([]); // kept for future use
   const [errors, setErrors] = React.useState<{platform?:string,boss?:string,char?:string}>({});
   const navigate = useNavigate();
 
   const BOSSES = [
     'Tricephalos',
+    'Tricephalos (Heroic)',
     'Gaping Jaw',
+    'Gaping Jaw (Heroic)',
     'Sentient Pest',
+    'Sentient Pest (Heroic)',
     'Augur',
+    'Augur (Heroic)',
     'Equilibrious Beast',
+    'Equilibrious Beast (Heroic)',
     'Darkdrift Knight',
+    'Darkdrift Knight (Heroic)',
     'Fissure in the Fog',
+    'Fissure in the Fog (Heroic)',
     'Night Aspect',
+    'Night Aspect (Heroic)',
   ];
   const CHARS = [
     'Revenant',
@@ -62,15 +70,15 @@ const ExpeditionsScreen = () => {
     const newErrors: any = {};
     if (!platform) newErrors.platform = 'required';
     if (!allBosses && bosses.length === 0) newErrors.boss = 'required';
-    if (characters.length === 0) newErrors.char = 'required';
     setErrors(newErrors);
     if (Object.keys(newErrors).length) return;
     
     const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const finalBosses = allBosses ? [] : bosses;
+    const finalCharacters = characters.length === 0 ? CHARS : characters; // default to all
     
     navigate('/waiting', { 
-      state: { userId, platform, bosses: finalBosses, characters } 
+      state: { userId, platform, bosses: finalBosses, characters: finalCharacters } 
     });
   };
 
@@ -102,27 +110,8 @@ const ExpeditionsScreen = () => {
         ))}
       </div>
 
-      <h3 style={{marginBottom: 12}}>Characters {errors.char && <span style={{color:'red',fontSize:14}}> - {errors.char}</span>}</h3>
-      <div className="char-buttons" style={{marginBottom: 24, display: 'flex', flexWrap: 'wrap', gap: 12}}>
-        <button
-          onClick={() => {
-            if (characters.length === CHARS.length) {
-              setCharacters([]);
-              setErrors(prev=>({...prev,char:undefined}));
-            } else {
-              setCharacters([...CHARS]);
-              setErrors(prev=>({...prev,char:undefined}));
-            }
-          }}
-          className={characters.length === CHARS.length ? 'rect-btn selected' : 'rect-btn'}
-          style={{minWidth: 120}}
-        >
-          Any character
-        </button>
-        {characters.length !== CHARS.length && CHARS.map(c=> (
-          <button key={c} onClick={()=>{toggle(characters,c,setCharacters); setErrors(prev=>({...prev,char:undefined}));}} className={characters.includes(c)?'rect-btn selected':'rect-btn'} style={{minWidth: 120}}>{c}</button>
-        ))}
-      </div>
+      {/* <h3 style={{marginBottom: 12}}>Characters {errors.char && <span style={{color:'red',fontSize:14}}> - {errors.char}</span>}</h3> */}
+      {/* Character selection hidden for now */}
 
       <button className="search-btn" onClick={handleGenerate}>Generate Password</button>
       <Link to="/" className="back-btn">← Back</Link>
@@ -136,6 +125,7 @@ const WaitingScreen = () => {
   const { userId, platform, bosses, characters } = location.state || {};
   const [socket, setSocket] = React.useState<Socket | null>(null);
   const [status, setStatus] = React.useState('Connecting...');
+  const [waitTime, setWaitTime] = React.useState(0);
 
   React.useEffect(() => {
     if (!userId) {
@@ -154,8 +144,6 @@ const WaitingScreen = () => {
     newSocket.on('connect', () => {
       console.log('Connected to server');
       setStatus('Looking for a team for you…');
-      
-      // Join the matchmaking queue
       newSocket.emit('join_queue', {
         userId,
         platform,
@@ -168,8 +156,8 @@ const WaitingScreen = () => {
       console.log('Match found!', matchData);
       navigate('/matchfound', { 
         state: { 
-          result: matchData, 
-          assignedChar: matchData.assignedCharacter 
+          result: matchData,
+          userId,
         } 
       });
     });
@@ -187,50 +175,161 @@ const WaitingScreen = () => {
 
     setSocket(newSocket);
 
+    // Timer logic
+    const startTime = Date.now();
+    const timer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      setWaitTime(elapsed);
+    }, 1000);
+
     return () => {
       newSocket.close();
+      clearInterval(timer);
     };
   }, [userId, platform, bosses, characters, navigate]);
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   return (
     <div className="screen" style={{textAlign:'center'}}>
       <h2>{status}</h2>
-      <p>Please keep this tab open.</p>
+      <div style={{ marginTop: 20, minWidth: 160 }}>
+        <div style={{ 
+          fontSize: 28, 
+          fontWeight: 'bold', 
+          color: '#fff',
+          fontFamily: 'monospace',
+          letterSpacing: 1
+        }}>
+          {formatTime(waitTime)}
+        </div>
+      </div>
+      <p style={{ marginTop: 20 }}>Please keep this tab open.</p>
       {socket && (
         <div style={{marginTop: 20, fontSize: 14, color: '#666'}}>
           Connection: {socket.connected ? '🟢 Connected' : '🔴 Disconnected'}
         </div>
       )}
+      <div style={{ marginTop: 30 }}>
+        <Link to="/expeditions" className="back-btn">
+          ← Cancel & Go Back
+        </Link>
+      </div>
     </div>
   );
 };
 
 const MatchFoundScreen = () => {
-  const location = useLocation() as any;
+  const location = useLocation();
   const navigate = useNavigate();
-  const { result, assignedChar } = location.state || {};
-  if (!result) return <div className="screen">No match data</div>;
+  const { result, userId } = location.state || {};
+  const [socket, setSocket] = React.useState<Socket | null>(null);
+  const [messages, setMessages] = React.useState<{user: string, text: string}[]>([]);
+  const [input, setInput] = React.useState('');
+
+  const playerIndex = result && result.participants ? result.participants.indexOf(userId) : -1;
+  const playerName = playerIndex >= 0 ? `Player ${playerIndex + 1}` : 'Player';
+
+  React.useEffect(() => {
+    if (!result) return;
+    const serverUrl = process.env.REACT_APP_SERVER_URL || 'http://localhost:4000';
+    const newSocket = io(serverUrl, {
+      transports: ['websocket', 'polling'],
+      upgrade: true,
+      timeout: 20000,
+      forceNew: true
+    });
+    // Join the match room
+    newSocket.emit('join_match_room', { password: result.password, user: playerName });
+    newSocket.on('chat_message', (msg: {user: string, text: string}) => {
+      setMessages(prev => [...prev, msg]);
+    });
+    setSocket(newSocket);
+    return () => { newSocket.close(); };
+  }, [result, userId]);
+
+  // ---------------------
+  // New: notify party when user leaves
+  const handleLeave = () => {
+    if (socket && result) {
+      socket.emit('chat_message', {
+        room: result.password,
+        user: 'system',
+        text: `${playerName} has left the party.`,
+      });
+      socket.close();
+    }
+    navigate('/');
+  };
+  // ---------------------
+
+  const sendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (input.trim() && socket) {
+      socket.emit('chat_message', { room: result.password, user: playerName, text: input });
+      setInput('');
+    }
+  };
+
+  if (!result) {
+    return <div className="screen">No match data</div>;
+  }
+
   return (
-    <div className="screen" style={{textAlign:'center'}}>
-      <h1 style={{color:'#4CAF50'}}>Match Found!</h1>
+    <div className="screen" style={{ textAlign: 'center' }}>
+      <h1 style={{ color: '#4CAF50' }}>Match Found!</h1>
       <h3>Password</h3>
-      <p style={{fontSize:24, fontWeight:'bold'}}>{result.password}</p>
-      <h3>Team Composition</h3>
-      <p>{Object.values(result.assignedCharacters).join(', ')}</p>
-      <h3>Your Character</h3>
-      <p style={{fontSize:20, fontWeight:'bold'}}>{assignedChar}</p>
-      <button className="search-btn" onClick={()=>navigate('/')}>Done</button>
+      <p style={{ fontSize: 24, fontWeight: 'bold' }}>{result.password}</p>
+      <h3>Boss</h3>
+      <p style={{ fontSize: 18, fontWeight: 'bold' }}>{result.assignedBoss && result.assignedBoss !== 'Random' ? result.assignedBoss : (result.actualBoss || 'Random Boss')}</p>
+      {/* Team composition and personal character hidden for now */}
+      {/* Chat area */}
+      <div style={{ margin: '32px auto 0', maxWidth: 400, background: '#222', borderRadius: 8, padding: 16, color: '#fff', textAlign: 'left' }}>
+        <div style={{ fontWeight: 'bold', marginBottom: 8 }}>Party Chat</div>
+        <div style={{ minHeight: 80, maxHeight: 180, overflowY: 'auto', marginBottom: 8, background: '#181818', borderRadius: 4, padding: 8 }}>
+          {messages.length === 0 && <div style={{ color: '#aaa' }}>No messages yet.</div>}
+          {messages.map((msg, i) => (
+            msg.user === 'system' ? (
+              <div key={i} style={{ marginBottom: 4, color: '#aaa', fontStyle: 'italic', textAlign: 'left' }}>{msg.text}</div>
+            ) : (
+              <div key={i} style={{ marginBottom: 4 }}>
+                <span style={{ color: msg.user === playerName ? '#4CAF50' : '#fff', fontWeight: msg.user === playerName ? 'bold' : 'normal' }}>{msg.user}:</span> <span>{msg.text}</span>
+              </div>
+            )
+          ))}
+        </div>
+        <form onSubmit={sendMessage} style={{ display: 'flex', gap: 8 }}>
+          <input
+            type="text"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            placeholder="Type a message..."
+            style={{ flex: 1, borderRadius: 4, border: '1px solid #444', padding: 6, background: '#111', color: '#fff' }}
+            autoComplete="off"
+          />
+          <button type="submit" style={{ background: '#4CAF50', color: '#fff', border: 'none', borderRadius: 4, padding: '0 16px', fontWeight: 'bold', cursor: 'pointer' }}>Send</button>
+        </form>
+      </div>
+      <button className="search-btn" onClick={handleLeave}>Leave</button>
     </div>
   );
 };
 
 function App() {
+  React.useEffect(() => {
+    fetch(`${process.env.REACT_APP_SERVER_URL}/metrics/visit`, { method: 'POST' })
+      .catch(() => {});          // fire & forget
+  }, []);
+
   return (
     <Router>
       <div className="App">
         <Routes>
-          <Route path="/" element={<HomeScreen />} />
-          <Route path="/expeditions" element={<ExpeditionsScreen />} />
+          <Route path="/" element={<ExpeditionsScreen />} />
           <Route path="/waiting" element={<WaitingScreen />} />
           <Route path="/matchfound" element={<MatchFoundScreen />} />
         </Routes>
