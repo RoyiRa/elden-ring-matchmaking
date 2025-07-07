@@ -215,7 +215,7 @@ const WaitingScreen = () => {
         </div>
       )}
       <div style={{ marginTop: 30 }}>
-        <Link to="/expeditions" className="back-btn">
+        <Link to="/" className="back-btn">
           ← Cancel & Go Back
         </Link>
       </div>
