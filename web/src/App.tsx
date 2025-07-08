@@ -254,13 +254,8 @@ const MatchFoundScreen = () => {
   // ---------------------
   // New: notify party when user leaves
   const handleLeave = () => {
-    if (socket && result) {
-      socket.emit('chat_message', {
-        room: result.password,
-        user: 'system',
-        text: `${playerName} has left the party.`,
-      });
-      socket.close();
+    if (socket) {
+      socket.close(); // server will broadcast leave message on disconnect
     }
     navigate('/');
   };

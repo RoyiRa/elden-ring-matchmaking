@@ -187,3 +187,5 @@ The React Native app can also connect to the same server:
 3. Submit for review
 
 **Note**: Both web and mobile versions can share the same backend server! 
+
+Users → Netlify (Web App) → Railway Server → Real-time Matchmaking 

@@ -18,7 +18,12 @@ const io = new Server(server, {
 const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const GUILD_ID = process.env.DISCORD_GUILD_ID;
 const CATEGORY_ID = process.env.DISCORD_CATEGORY_ID;   // may be undefined
-let voiceChannelCounter = 0;
+
+// Ensure fetch available (Node <18)
+if (typeof fetch === 'undefined') {
+  global.fetch = (...args) => import('node-fetch').then(({default: fetchFn}) => fetchFn(...args));
+}
+const DISCORD_API = 'https://discord.com/api/v10';
 
 async function discordRequest(endpoint, method, body) {
   const res = await fetch(`${DISCORD_API}${endpoint}`, {
@@ -157,13 +162,20 @@ class MatchmakingService {
             for (let k = j + 1; k < platformPlayers.length; k++) {
               const trio = [platformPlayers[i], platformPlayers[j], platformPlayers[k]];
               
-              // Check if they have compatible bosses
-              const allBosses = trio.flatMap(p => p.bosses);
-              const commonBoss = allBosses.find(boss => 
-                trio.every(p => p.bosses.includes(boss) || p.bosses.includes('ALL_BOSSES') || boss === 'ALL_BOSSES')
-              );
-              
-              if (!commonBoss) continue;
+              // --- Boss compatibility check via intersection ---
+              const allPossibleBosses = ['Tricephalos', 'Gaping Jaw', 'Sentient Pest', 'Augur', 'Equilibrious Beast', 'Darkdrift Knight', 'Fissure in the Fog', 'Night Aspect'];
+
+              const bossLists = trio.map(p => {
+                return p.bosses.length === 0 || p.bosses.includes('ALL_BOSSES')
+                  ? allPossibleBosses
+                  : p.bosses;
+              });
+
+              const intersection = bossLists.reduce((a, b) => a.filter(x => b.includes(x)));
+
+              console.log('intersection ->', intersection);
+
+              if (intersection.length === 0) continue; // incompatible bosses
 
               const assigned = tryAssign(trio);
               if (!assigned) continue;
@@ -173,19 +185,8 @@ class MatchmakingService {
                 !trio.some(t => t.userId === p.userId)
               );
 
-              // --- Boss intersection logic ---
-              let actualBoss = commonBoss;
-              if (commonBoss === 'ALL_BOSSES' || commonBoss === 'Random') {
-                // If a player's boss list is only ALL_BOSSES, treat as all bosses
-                const allPossibleBosses = ['Tricephalos', 'Gaping Jaw', 'Sentient Pest', 'Augur', 'Equilibrious Beast', 'Darkdrift Knight', 'Fissure in the Fog', 'Night Aspect'];
-                const bossLists = trio.map(p => {
-                  const filtered = p.bosses.filter(b => b !== 'ALL_BOSSES');
-                  return filtered.length > 0 ? filtered : allPossibleBosses;
-                });
-                const intersection = bossLists.reduce((a, b) => a.filter(c => b.includes(c)), bossLists[0]);
-                const bossPool = intersection.length > 0 ? intersection : allPossibleBosses;
-                actualBoss = bossPool[Math.floor(Math.random() * bossPool.length)];
-              }
+              // Pick actual boss from intersection
+              const actualBoss = intersection[Math.floor(Math.random() * intersection.length)];
 
               const matchResult = {
                 success: true,
@@ -200,8 +201,20 @@ class MatchmakingService {
               // --- Discord voice channel creation ---
               if (BOT_TOKEN && GUILD_ID) {
                 try {
-                  voiceChannelCounter += 1;
-                  const channelName = `${voiceChannelCounter}`; // simple enumeration 1,2,3...
+                  // Fetch existing channels to determine next numeric room name
+                  const allChannels = await discordRequest(`/guilds/${GUILD_ID}/channels`, 'GET');
+                  const candidate = allChannels.filter(c => {
+                    if (c.type !== 2) return false; // voice only
+                    if (CATEGORY_ID && c.parent_id !== CATEGORY_ID) return false;
+                    return /^\d+$/.test(c.name) || /^match-\w+$/i.test(c.name);
+                  });
+                  const maxNum = candidate.reduce((max, ch) => {
+                    const n = parseInt(ch.name, 10);
+                    return isNaN(n) ? max : Math.max(max, n);
+                  }, 0);
+
+                  const channelName = String(maxNum + 1 || 1);
+
                   const channel = await discordRequest(
                     `/guilds/${GUILD_ID}/channels`,
                     'POST',
@@ -222,7 +235,9 @@ class MatchmakingService {
 
                   // schedule deletion after 2 hours
                   setTimeout(() => {
-                    discordRequest(`/channels/${channel.id}`, 'DELETE').catch(()=>{});
+                    discordRequest(`/channels/${channel.id}`, 'DELETE').then(() => {
+                      console.log(`Deleted Discord room #${channelName}`);
+                    }).catch(()=>{});
                   }, 2 * 60 * 60 * 1000);
                 } catch (e) {
                   console.error('Failed to create Discord voice channel', e);
@@ -309,6 +324,13 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${socket.id}`);
+    // Notify remaining party members if this socket was in a match room
+    if (socket.data && socket.data.matchRoom && socket.data.matchUser) {
+      io.to(socket.data.matchRoom).emit('chat_message', {
+        user: 'system',
+        text: `${socket.data.matchUser} has left the party.`
+      });
+    }
     matchmaker.removePlayer(socket.id);
   });
 });
@@ -335,6 +357,37 @@ app.get('/health', (req, res) => {
 
 const PORT = process.env.PORT || 4000;
 const HOST = process.env.HOST || '0.0.0.0';
+
+const ROOM_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+function snowflakeToMillis(id) {
+  return Number((BigInt(id) >> 22n)) + 1420070400000;
+}
+
+async function cleanupOldVoiceChannels() {
+  if (!BOT_TOKEN || !GUILD_ID) return;
+  try {
+    const channels = await discordRequest(`/guilds/${GUILD_ID}/channels`, 'GET');
+    const now = Date.now();
+    for (const ch of channels) {
+      if (ch.type !== 2) continue; // voice only
+      if (CATEGORY_ID && ch.parent_id !== CATEGORY_ID) continue;
+      if (!/^\d+$/.test(ch.name) && !/^match-\w+$/i.test(ch.name)) continue;
+      const created = snowflakeToMillis(ch.id);
+      if (now - created > ROOM_TTL_MS) {
+        // Note: REST API doesn't expose member count; delete anyway – players get disconnected
+        await discordRequest(`/channels/${ch.id}`, 'DELETE').then(() => {
+          console.log(`Deleted Discord room #${ch.name}`);
+        }).catch(()=>{});
+      }
+    }
+  } catch (err) {
+    console.error('Voice channel cleanup failed', err);
+  }
+}
+
+// Run cleanup every 5 minutes
+setInterval(cleanupOldVoiceChannels, 5 * 60 * 1000);
 
 server.listen(PORT, HOST, () => {
   console.log(`Matchmaking server running on ${HOST}:${PORT}`);
