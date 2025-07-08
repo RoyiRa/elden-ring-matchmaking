@@ -15,6 +15,27 @@ const io = new Server(server, {
   }
 });
 
+const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
+const GUILD_ID = process.env.DISCORD_GUILD_ID;
+const CATEGORY_ID = process.env.DISCORD_CATEGORY_ID;   // may be undefined
+let voiceChannelCounter = 0;
+
+async function discordRequest(endpoint, method, body) {
+  const res = await fetch(`${DISCORD_API}${endpoint}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bot ${BOT_TOKEN}`
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (!res.ok) {
+    console.error(`Discord API error ${res.status}`);
+    throw new Error(`Discord API error ${res.status}`);
+  }
+  return res.json();
+}
+
 // In-memory matchmaking service (same logic as web app)
 class MatchmakingService {
   constructor() {
@@ -56,7 +77,7 @@ class MatchmakingService {
     return result;
   }
 
-  addPlayer(socketId, userId, platform, bosses, characters) {
+  async addPlayer(socketId, userId, platform, bosses, characters) {
     // Remove if already exists
     this.waitingPlayers = this.waitingPlayers.filter(p => p.userId !== userId);
     
@@ -70,7 +91,7 @@ class MatchmakingService {
     });
 
     console.log(`Player ${userId} joined queue. Total waiting: ${this.waitingPlayers.length}`);
-    return this.tryMatch();
+    return await this.tryMatch();
   }
 
   removePlayer(socketId) {
@@ -82,7 +103,7 @@ class MatchmakingService {
     }
   }
 
-  tryMatch() {
+  async tryMatch() {
     const tryAssign = (prefs) => {
       for (const comp of this.allowedCompositions) {
         const charsArr = Array.from(comp);
@@ -176,6 +197,39 @@ class MatchmakingService {
                 assignedCharacters: assigned,
               };
 
+              // --- Discord voice channel creation ---
+              if (BOT_TOKEN && GUILD_ID) {
+                try {
+                  voiceChannelCounter += 1;
+                  const channelName = `${voiceChannelCounter}`; // simple enumeration 1,2,3...
+                  const channel = await discordRequest(
+                    `/guilds/${GUILD_ID}/channels`,
+                    'POST',
+                    {
+                      name: channelName,
+                      type: 2, // voice
+                      user_limit: 3,
+                      parent_id: CATEGORY_ID || undefined
+                    }
+                  );
+                  const invite = await discordRequest(
+                    `/channels/${channel.id}/invites`,
+                    'POST',
+                    { max_age: 3600, max_uses: 3 }
+                  );
+                  matchResult.discordInvite = `https://discord.gg/${invite.code}`;
+                  matchResult.discordChannelName = channelName;
+
+                  // schedule deletion after 2 hours
+                  setTimeout(() => {
+                    discordRequest(`/channels/${channel.id}`, 'DELETE').catch(()=>{});
+                  }, 2 * 60 * 60 * 1000);
+                } catch (e) {
+                  console.error('Failed to create Discord voice channel', e);
+                }
+              }
+              // --- End Discord ---
+
               console.log(`Match found! Players: ${trio.map(t => t.userId).join(', ')}`);
               return { match: matchResult, players: trio };
             }
@@ -220,11 +274,11 @@ app.get('/metrics', (req, res) => {
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
 
-  socket.on('join_queue', (data) => {
+  socket.on('join_queue', async (data) => {
     totalQueueStarts += 1; // metric
     const { userId, platform, bosses, characters } = data;
     
-    const result = matchmaker.addPlayer(socket.id, userId, platform, bosses, characters);
+    const result = await matchmaker.addPlayer(socket.id, userId, platform, bosses, characters);
     
     if (result) {
       totalMatches += 1; // metric

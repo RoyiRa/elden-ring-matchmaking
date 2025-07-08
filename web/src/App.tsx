@@ -6,14 +6,14 @@ import { io, Socket } from 'socket.io-client';
 // Simple components for web
 const HomeScreen = () => {
   return (
-    <div className="screen">
-      <h1>Elden Ring Matchmaking</h1>
-      <p>Find your perfect co-op partner</p>
-      <div className="quick-actions">
+  <div className="screen">
+    <h1>Elden Ring Matchmaking</h1>
+    <p>Find your perfect co-op partner</p>
+    <div className="quick-actions">
         <Link to="/expeditions" className="action-card">
           <h3>⚔️ Expeditions</h3>
           <p>Form 3-player parties</p>
-        </Link>
+      </Link>
       </div>
       
       <div style={{marginTop: 20, padding: 15, backgroundColor: '#f5f5f5', borderRadius: 8}}>
@@ -21,8 +21,8 @@ const HomeScreen = () => {
         <p>This version connects to a real server for worldwide matchmaking!</p>
         <p>Server: {process.env.REACT_APP_SERVER_URL || 'http://localhost:4000'}</p>
       </div>
-    </div>
-  );
+  </div>
+);
 };
 
 const ExpeditionsScreen = () => {
@@ -83,7 +83,7 @@ const ExpeditionsScreen = () => {
   };
 
   return (
-    <div className="screen">
+  <div className="screen">
       <h1>Expeditions</h1>
 
       <h3 style={{marginBottom: 12}}>Platform {errors.platform && <span style={{color:'red',fontSize:14}}> - {errors.platform}</span>}</h3>
@@ -114,9 +114,8 @@ const ExpeditionsScreen = () => {
       {/* Character selection hidden for now */}
 
       <button className="search-btn" onClick={handleGenerate}>Generate Password</button>
-      <Link to="/" className="back-btn">← Back</Link>
-    </div>
-  );
+  </div>
+);
 };
 
 const WaitingScreen = () => {
@@ -206,21 +205,21 @@ const WaitingScreen = () => {
           letterSpacing: 1
         }}>
           {formatTime(waitTime)}
-        </div>
+      </div>
       </div>
       <p style={{ marginTop: 20 }}>Please keep this tab open.</p>
       {socket && (
         <div style={{marginTop: 20, fontSize: 14, color: '#666'}}>
           Connection: {socket.connected ? '🟢 Connected' : '🔴 Disconnected'}
-        </div>
+    </div>
       )}
       <div style={{ marginTop: 30 }}>
         <Link to="/" className="back-btn">
           ← Cancel & Go Back
         </Link>
       </div>
-    </div>
-  );
+  </div>
+);
 };
 
 const MatchFoundScreen = () => {
@@ -298,10 +297,10 @@ const MatchFoundScreen = () => {
             ) : (
               <div key={i} style={{ marginBottom: 4 }}>
                 <span style={{ color: msg.user === playerName ? '#4CAF50' : '#fff', fontWeight: msg.user === playerName ? 'bold' : 'normal' }}>{msg.user}:</span> <span>{msg.text}</span>
-              </div>
+    </div>
             )
           ))}
-        </div>
+      </div>
         <form onSubmit={sendMessage} style={{ display: 'flex', gap: 8 }}>
           <input
             type="text"
@@ -314,9 +313,23 @@ const MatchFoundScreen = () => {
           <button type="submit" style={{ background: '#4CAF50', color: '#fff', border: 'none', borderRadius: 4, padding: '0 16px', fontWeight: 'bold', cursor: 'pointer' }}>Send</button>
         </form>
       </div>
+      {result.discordInvite && (
+        <a href={result.discordInvite} target="_blank" rel="noopener noreferrer" style={{
+          display:'inline-block',
+          marginTop:16,
+          background:'#5865F2',
+          color:'#fff',
+          padding:'8px 16px',
+          borderRadius:4,
+          textDecoration:'none',
+          fontWeight:'bold'
+        }}>
+          🎤 Join Discord Voice {result.discordChannelName ? `(Room ${result.discordChannelName})` : ''}
+        </a>
+      )}
       <button className="search-btn" onClick={handleLeave}>Leave</button>
-    </div>
-  );
+  </div>
+);
 };
 
 function App() {
