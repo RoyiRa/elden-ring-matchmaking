@@ -163,11 +163,20 @@ class MatchmakingService {
               const trio = [platformPlayers[i], platformPlayers[j], platformPlayers[k]];
               
               // --- Boss compatibility check via intersection ---
-              const allPossibleBosses = ['Tricephalos', 'Gaping Jaw', 'Sentient Pest', 'Augur', 'Equilibrious Beast', 'Darkdrift Knight', 'Fissure in the Fog', 'Night Aspect'];
-
+              const BOSSES = [
+                'Tricephalos',
+                'Gaping Jaw',
+                'Sentient Pest',
+                'Augur',
+                'Equilibrious Beast',
+                'Darkdrift Knight',
+                'Fissure in the Fog',
+                'Night Aspect',
+                'Weekly Heroic'
+              ];
               const bossLists = trio.map(p => {
                 return p.bosses.length === 0 || p.bosses.includes('ALL_BOSSES')
-                  ? allPossibleBosses
+                  ? BOSSES
                   : p.bosses;
               });
 

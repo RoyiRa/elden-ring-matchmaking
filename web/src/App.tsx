@@ -35,21 +35,14 @@ const ExpeditionsScreen = () => {
 
   const BOSSES = [
     'Tricephalos',
-    'Tricephalos (Heroic)',
     'Gaping Jaw',
-    'Gaping Jaw (Heroic)',
     'Sentient Pest',
-    'Sentient Pest (Heroic)',
     'Augur',
-    'Augur (Heroic)',
     'Equilibrious Beast',
-    'Equilibrious Beast (Heroic)',
     'Darkdrift Knight',
-    'Darkdrift Knight (Heroic)',
     'Fissure in the Fog',
-    'Fissure in the Fog (Heroic)',
     'Night Aspect',
-    'Night Aspect (Heroic)',
+    'Weekly Heroic',
   ];
   const CHARS = [
     'Revenant',
@@ -250,6 +243,15 @@ const MatchFoundScreen = () => {
     setSocket(newSocket);
     return () => { newSocket.close(); };
   }, [result, userId]);
+
+  // Ensure socket closes on tab close/navigation to trigger server disconnect notice
+  React.useEffect(() => {
+    const handleUnload = () => {
+      if (socket) socket.close();
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, [socket]);
 
   // ---------------------
   // New: notify party when user leaves
